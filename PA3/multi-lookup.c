@@ -23,12 +23,6 @@ int main(int argc, char* argv[]){
 	struct timeval start, stop;
 	gettimeofday(&start, NULL);
 
-
-	// Instantiate struct containing mutexes and stack
-	struct Protector* protector = NULL;
-	protector = malloc(sizeof(struct Protector));
-
-
 	//initialize variables for tracking requesters and resolvers
 	int requesters = 0;
 	int resolvers = 0;
@@ -53,25 +47,37 @@ int main(int argc, char* argv[]){
 	resolvers = (int)strtol(argv[2], resolverPtr, 10);
 
 	if (requesters <= 0 || resolvers <= 0){
-		printf(stderr, "Too FEW requesters or resolvers\n");
+		fprintf(stderr, "Too FEW requesters or resolvers\n");
 		exit(EXIT_FAILURE);
 	}
 	if (requesters > MAX_REQUESTER_THREADS || resolvers > MAX_RESOLVER_THREADS){
-		printf(stderr, "Too MANY requesters or resolvers\n");
+		fprintf(stderr, "Too MANY requesters or resolvers\n");
 		exit(EXIT_FAILURE);
 	}
 
 /*******************************************************************************
 														DATA STRUCTURE UPDATE
 *******************************************************************************/
+	// Instantiate struct containing mutexes and stack
+	struct Protector* protector = NULL;
+	protector = protectorConstructor(argv, argc, requesters);
+
+	// Initialize arrays of thread pointers
+	pthread_t reqThreads[requesters];
+	pthread_t resThreads[resolvers];
+
+/*******************************************************************************
+													OPEN LOG FILES FOR WRITING
+*******************************************************************************/
+	FILE* requesterLog = NULL;
+	FILE* resolverLog = NULL;
+	requesterLog = openWrite(requesterLog, argv[3]);
+	resolverLog = openWrite(resolverLog, argv[4]);
 
 
 
-
-
-	
 	//free the mutex protector struct
-	free(protector);
+	protectorDestructor(protector);
 
 	// Stop timer and output elapsed time
 	gettimeofday(&stop, NULL);
@@ -96,7 +102,31 @@ struct Protector* protectorConstructor(char** argv, int argc, int requesters){
 	struct Protector* p = (struct Protector*) malloc(sizeof(struct Protector));
 
 	p->stack = stackConstructor();
-
+	p->arguments = argv;
+	p->files = argc;
+	p->threads = requesters;
+	pthread_mutex_init(&p->stackLock, NULL);
+	pthread_mutex_init(&p->requesterLock, NULL);
+	pthread_mutex_init(&p->requesterLogLock, NULL);
+	pthread_mutex_init(&p->errLock, NULL);
+	pthread_mutex_init(&p->outputLock, NULL);
+	pthread_mutex_init(&p->filesLock, NULL);
 	return p;
 
 }
+
+void protectorDestructor(struct Protector* p){
+	stackDestructor(p->stack);
+	pthread_mutex_destroy(&p->stackLock);
+	pthread_mutex_destroy(&p->requesterLock);
+	pthread_mutex_destroy(&p->requesterLogLock);
+	pthread_mutex_destroy(&p->errLock);
+	pthread_mutex_destroy(&p->outputLock);
+	pthread_mutex_destroy(&p->filesLock);
+	free(p);
+}
+/*
+void* request(FILE* rqLog, FILE* rsLos, Protector* p){
+
+}
+*/

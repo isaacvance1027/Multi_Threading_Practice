@@ -22,6 +22,6 @@ struct Protector{
 };
 
 struct Protector* protectorConstructor(char** argv, int argc, int requesters);
-
+void protectorDestructor(struct Protector* p);
 
 #endif
