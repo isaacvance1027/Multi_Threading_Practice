@@ -5,11 +5,13 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/time.h>
+
 #include "constants.h"
 #include "stack.h"
 #include "multi-lookup.h"
 #include "util.h"
 #include "file.h"
+
 
 int main(int argc, char* argv[]){
 /*******************************************************************************
@@ -25,7 +27,7 @@ int main(int argc, char* argv[]){
 	// Instantiate struct containing mutexes and stack
 	struct Protector* protector = NULL;
 	protector = malloc(sizeof(struct Protector));
-	protector->stack = stackConstructor();
+
 
 	//initialize variables for tracking requesters and resolvers
 	int requesters = 0;
@@ -67,8 +69,7 @@ int main(int argc, char* argv[]){
 
 
 
-	//free the stack
-	stackDestructor(protector->stack);
+	
 	//free the mutex protector struct
 	free(protector);
 
@@ -92,6 +93,10 @@ int main(int argc, char* argv[]){
 *******************************************************************************/
 
 struct Protector* protectorConstructor(char** argv, int argc, int requesters){
-	struct Protector* p = (struct Protector*) malloc
+	struct Protector* p = (struct Protector*) malloc(sizeof(struct Protector));
+
+	p->stack = stackConstructor();
+
+	return p;
 
 }

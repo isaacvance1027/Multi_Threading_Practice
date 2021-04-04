@@ -23,4 +23,5 @@ struct Protector{
 
 struct Protector* protectorConstructor(char** argv, int argc, int requesters);
 
+
 #endif
