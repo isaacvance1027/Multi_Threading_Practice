@@ -100,13 +100,30 @@ int main(int argc, char* argv[]){
 	  }
 	}
 
+	// using pthread_join to susupend execution of calling thread until target
+	// thread terminates or has already terminated
+	for (int i = 0; i < requesters; i++) {
+    if (pthread_join(reqThreads[i], NULL) != 0) {
+      perror("REQUESTER join error.\n");
+      exit(EXIT_FAILURE);
+    }
+  }
+  for (int i = 0; i < resolvers; i++) {
+    if (pthread_join(resThreads[i], 0) != 0) {
+      perror("RESOLVER join error.\n");
+      exit(EXIT_FAILURE);
+    }
+  }
+
 /*******************************************************************************
 												FREE MEMORY AND END PROGRAM
 *******************************************************************************/
 	//free the mutex protector struct
 	protectorDestructor(protector);
 
-	//free the thread argument struct
+	//free the thread argument struct and close the log files
+	fclose(requesterLog);
+	fclose(resolverLog);
 	free(threadArg);
 
 	// Stop timer and output elapsed time
