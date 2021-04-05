@@ -93,7 +93,7 @@ int main(int argc, char* argv[]){
 	      perror("Requester thread pool failed.\n");
 	      exit(EXIT_FAILURE);
 	  }
-		printf("Request thread pool created\n");
+		//printf("Request thread pool created\n");
 	}
 	for (int i = 0; i < resolvers; i++){
 		if (pthread_create(&resThreads[i], NULL, &resolve, (void *) threadArg) != 0)
@@ -101,7 +101,7 @@ int main(int argc, char* argv[]){
 	      perror("Requester thread pool failed.\n");
 	      exit(EXIT_FAILURE);
 	  }
-		printf("Resolve thread pool created\n");
+		//printf("Resolve thread pool created\n");
 	}
 
 	// using pthread_join to susupend execution of calling thread until target
