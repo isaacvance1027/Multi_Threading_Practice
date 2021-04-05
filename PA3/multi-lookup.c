@@ -156,6 +156,7 @@ void protectorDestructor(struct Protector* p){
 /*******************************************************************************
 										REQUESTER AND RESOLVER DEFINTIONS
 *******************************************************************************/
+// Both the request and resovle functions
 
 void* request(void* arg){
 
@@ -202,11 +203,14 @@ void* request(void* arg){
 				strncpy(domain, name, MAX_NAME_LENGTH);
 				domainSize = strlen(domain);
 				if (domain[domainSize - 1] == '\n'){
-					//lock mutex for writing to request log
+					// lock mutex for writing to request log
 					pthread_mutex_lock(&protector->requesterLogLock);
 						fprintf(requesterLog, "%s", domain);
 					pthread_mutex_unlock(&protector->requesterLogLock);
 					domain[domainSize - 1] = '\0';
+					// use of semaphore with mutexes to implment a push onto the stack
+					// had a push function that wasnt thread safe, refactored here.
+					// TODO:: get rid of unnecessary functions from old iterations
 					sem_wait(&protector->emptyStack);
 						pthread_mutex_lock(&protector->stackLock);
 							protector->stack->head++;
@@ -216,6 +220,7 @@ void* request(void* arg){
 					sem_post(&protector->fullStack);
 				}
 				else {
+					// error message for out of bounds files
 					pthread_mutex_lock(&protector->errLock);
 						fprintf(stderr, "Host: %s out of bounds, file not logged.\n", domain);
 					pthread_mutex_unlock(&protector->errLock);
@@ -224,17 +229,21 @@ void* request(void* arg){
 			}
 		}
 		else{
+			// Display error message if thread is unable to access file
 			pthread_mutex_lock(&protector->errLock);
 				fprintf(stderr, "File: %s invalid\n", fileName);
 			pthread_mutex_unlock(&protector->errLock);
 		}
 		fclose(inputFile);
 	}
+
+	// output success message to display number of services performed by thread
 	pthread_t tid = pthread_self();
 	pthread_mutex_lock(&protector->outputLock);
 		fprintf(stdout, "Thread # %lu serviced %d files\n", tid, numOfFiles);
 	pthread_mutex_unlock(&protector->outputLock);
 
+	// Update the thread count after requester thread has finished a request
 	pthread_mutex_lock(&protector->stackLock);
 		protector->threads = protector->threads - 1;
 	pthread_mutex_unlock(&protector->stackLock);
@@ -242,8 +251,7 @@ void* request(void* arg){
 	return NULL;
 }
 
-/*
+
 void* resolve(void* threadArg){
 	// TODO:: FREE DOMAIN ALLOCATED BY STRNCPY
 }
-*/
