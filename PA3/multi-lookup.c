@@ -129,12 +129,12 @@ struct Protector* protectorConstructor(char** argv, int argc, int requesters){
 	pthread_mutex_init(&p->stackLock, NULL);
 	pthread_mutex_init(&p->threadLock, NULL);
 	pthread_mutex_init(&p->requesterLock, NULL);
-	pthread_mutex_init(&p->requesterLogLock, NULL);
+	pthread_mutex_init(&p->resolverLock, NULL);
 	pthread_mutex_init(&p->errLock, NULL);
 	pthread_mutex_init(&p->outputLock, NULL);
 	pthread_mutex_init(&p->filesLock, NULL);
 	sem_init(&p->emptyStack, 0, ARRAY_SIZE);
-	sem_init(&p->fullStack, 0, 0);
+	sem_init(&p->fillStack, 0, 0);
 	return p;
 
 }
@@ -143,12 +143,12 @@ void protectorDestructor(struct Protector* p){
 	stackDestructor(p->stack);
 	pthread_mutex_destroy(&p->stackLock);
 	pthread_mutex_destroy(&p->requesterLock);
-	pthread_mutex_destroy(&p->requesterLogLock);
+	pthread_mutex_destroy(&p->resolverLock);
 	pthread_mutex_destroy(&p->errLock);
 	pthread_mutex_destroy(&p->outputLock);
 	pthread_mutex_destroy(&p->filesLock);
 	sem_destroy(&p->emptyStack);
-	sem_destroy(&p->fullStack);
+	sem_destroy(&p->fillStack);
 	free(p);
 }
 
@@ -209,9 +209,9 @@ void* request(void* arg){
 				domainSize = strlen(domain);
 				if (domain[domainSize - 1] == '\n'){
 					// lock mutex for writing to request log
-					pthread_mutex_lock(&protector->requesterLogLock);
+					pthread_mutex_lock(&protector->requesterLock);
 						fprintf(requesterLog, "%s", domain);
-					pthread_mutex_unlock(&protector->requesterLogLock);
+					pthread_mutex_unlock(&protector->requesterLock);
 					domain[domainSize - 1] = '\0';
 					// use of semaphore with mutexes to implment a push onto the stack
 					// had a push function that wasnt thread safe, refactored here.
@@ -222,7 +222,7 @@ void* request(void* arg){
 							protector->stack->size++;
 							protector->stack->buff[protector->stack->head] = domain;
 						pthread_mutex_unlock(&protector->stackLock);
-					sem_post(&protector->fullStack);
+					sem_post(&protector->fillStack);
 				}
 				else {
 					// error message for out of bounds files
@@ -266,7 +266,7 @@ void* resolve(void* arg){
 	char* address = NULL;
 	char* domain = NULL;
 	int numOfFiles = 0;
-	int success = -1;
+	int utilSuccess = -1;
 	int checkThreads = 0;
 
 	struct Protector* protector = ((struct ThreadArg *)arg)->p;
@@ -291,7 +291,42 @@ void* resolve(void* arg){
 				pthread_mutex_unlock(&protector->stackLock);
 			}
 
+		// know that stack is not empty here, need to see whats at head and pop it
+		// will use same implementation of semaphores as in request with push
+		// *** old implmentation of pop also not working for synchronization
+		sem_wait(&protector->fillStack);
+			pthread_mutex_lock(&protector->stackLock);
+				domain = protector->stack->buff[protector->stack->head];
+				protector->stack->head = protector->stack->head - 1;
+			pthread_mutex_unlock(&protector->stackLock);
+		sem_post(&protector->emptyStack);
 
+		// now need to call dnslookup from util.c in order to get host fileName
+		utilSuccess = dnslookup(domain, address, MAX_IP_LENGTH);
+
+		// dnslookup uses strncpy to write to address, need to put in resolver log
+		pthread_mutex_lock(&protector->resolverLock);
+			if (utilSuccess == 0){
+				fprintf(resolverLog, "%s not resolved \n", domain);
+			}
+			else if (utilSuccess == -1){
+				fprintf(resolverLog, "%s, %s\n", domain, address);
+				numOfFiles = numOfFiles + 1;
+			}
+		pthread_mutex_unlock(&protector->resolverLock);
 	}
+
+	// ****** Free space alloced by strncpy in request ****
+	free(domain);
+	domain = NULL;
+	address = NULL;
+
+	// print thread id resolved
+	pthread_t tid = pthread_self();
+	pthread_mutex_lock(&protector->outputLock);
+		fprintf(stdout, "Thread # %lu resolved %d hosts\n", tid, numOfFiles);
+	pthread_mutex_unlock(&protector->outputLock);
+
+	return NULL;
 
 }

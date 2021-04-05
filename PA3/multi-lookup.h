@@ -18,12 +18,12 @@ struct Protector{
 	pthread_mutex_t stackLock;
 	pthread_mutex_t threadLock;
 	pthread_mutex_t requesterLock;
-	pthread_mutex_t requesterLogLock;
+	pthread_mutex_t resolverLock;
 	pthread_mutex_t errLock;
 	pthread_mutex_t outputLock;
 	pthread_mutex_t	filesLock;
 	sem_t emptyStack;
-	sem_t fullStack;
+	sem_t fillStack;
 };
 
 // Thread Argument Struct
