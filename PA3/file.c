@@ -17,11 +17,9 @@
 
 // open file for reading
 FILE* openRead(FILE* fp, char* file){
-	int fileCheck;
-	fileCheck = access(file, R_OK);
+	fp = fopen(file, "r");
 
-	if (fileCheck == 0){
-		fp = fopen(file, "r");
+	if (access(file, F_OK | R_OK) == 0){
 		return fp;
 	}
 
@@ -32,11 +30,9 @@ FILE* openRead(FILE* fp, char* file){
 
 // open file for writing
 FILE* openWrite(FILE* fp, char* file){
-	int fileCheck;
-	fileCheck = access(file, W_OK);
+	fp = fopen(file, "w+");
 
-	if (fileCheck == 0){
-		fp = fopen(file, "w+");
+	if (access(file, F_OK | R_OK) == 0){
 		return fp;
 	}
 

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/time.h>
@@ -79,6 +80,7 @@ int main(int argc, char* argv[]){
 	struct ThreadArg* threadArg = malloc(sizeof(struct ThreadArg));
 	threadArg->requestLog = requesterLog;
 	threadArg->resolveLog = resolverLog;
+	threadArg->p = protector;
 
 /*******************************************************************************
 														BEGIN THREAD POOLS
@@ -91,6 +93,7 @@ int main(int argc, char* argv[]){
 	      perror("Requester thread pool failed.\n");
 	      exit(EXIT_FAILURE);
 	  }
+		printf("Request thread pool created\n");
 	}
 	for (int i = 0; i < resolvers; i++){
 		if (pthread_create(&resThreads[i], NULL, &resolve, (void *) threadArg) != 0)
@@ -98,6 +101,7 @@ int main(int argc, char* argv[]){
 	      perror("Requester thread pool failed.\n");
 	      exit(EXIT_FAILURE);
 	  }
+		printf("Resolve thread pool created\n");
 	}
 
 	// using pthread_join to susupend execution of calling thread until target
@@ -152,7 +156,9 @@ struct Protector* protectorConstructor(char** argv, int argc, int requesters){
 	p->arguments = argv;
 	p->files = argc;
 	p->threads = requesters;
+	p->whichFile = 5;
 	pthread_mutex_init(&p->stackLock, NULL);
+	pthread_mutex_init(&p->resolverStackLock, NULL);
 	pthread_mutex_init(&p->threadLock, NULL);
 	pthread_mutex_init(&p->requesterLock, NULL);
 	pthread_mutex_init(&p->resolverLock, NULL);
@@ -168,6 +174,7 @@ struct Protector* protectorConstructor(char** argv, int argc, int requesters){
 void protectorDestructor(struct Protector* p){
 	stackDestructor(p->stack);
 	pthread_mutex_destroy(&p->stackLock);
+	pthread_mutex_destroy(&p->resolverStackLock);
 	pthread_mutex_destroy(&p->requesterLock);
 	pthread_mutex_destroy(&p->resolverLock);
 	pthread_mutex_destroy(&p->errLock);
@@ -183,7 +190,7 @@ void protectorDestructor(struct Protector* p){
 /*******************************************************************************
 										REQUESTER AND RESOLVER DEFINTIONS
 *******************************************************************************/
-// Both the request and resovle functions
+// Both the request and resolve functions
 
 void* request(void* arg){
 
@@ -231,7 +238,8 @@ void* request(void* arg){
 				// strncpy() auto mallocs, remember the TODO in resolve to free the
 				// space that has been malloced.... resolve needs to be able to access
 				// domain memory space because threads share heap
-				strncpy(domain, name, MAX_NAME_LENGTH);
+				domain = (char *) malloc(sizeof(char *) * MAX_NAME_LENGTH);
+        memcpy(domain, name, MAX_NAME_LENGTH);
 				domainSize = strlen(domain);
 				if (domain[domainSize - 1] == '\n'){
 					// lock mutex for writing to request log
@@ -256,8 +264,8 @@ void* request(void* arg){
 						fprintf(stderr, "Host: %s out of bounds.\n", domain);
 					pthread_mutex_unlock(&protector->errLock);
 				}
-				numOfFiles = numOfFiles + 1;
 			}
+			numOfFiles = numOfFiles + 1;
 		}
 		else{
 			// Display error message if thread is unable to access file
@@ -321,10 +329,10 @@ void* resolve(void* arg){
 		// will use same implementation of semaphores as in request with push
 		// *** old implmentation of pop also not working for synchronization
 		sem_wait(&protector->fillStack);
-			pthread_mutex_lock(&protector->stackLock);
+			pthread_mutex_lock(&protector->resolverStackLock);
 				domain = protector->stack->buff[protector->stack->head];
 				protector->stack->head = protector->stack->head - 1;
-			pthread_mutex_unlock(&protector->stackLock);
+			pthread_mutex_unlock(&protector->resolverStackLock);
 		sem_post(&protector->emptyStack);
 
 		// now need to call dnslookup from util.c in order to get host fileName
@@ -332,26 +340,28 @@ void* resolve(void* arg){
 
 		// dnslookup uses strncpy to write to address, need to put in resolver log
 		pthread_mutex_lock(&protector->resolverLock);
-			if (utilSuccess == 0){
+			if (utilSuccess == -1){
 				fprintf(resolverLog, "%s not resolved \n", domain);
 			}
-			else if (utilSuccess == -1){
+			else if (utilSuccess == 0){
 				fprintf(resolverLog, "%s, %s\n", domain, address);
 				numOfFiles = numOfFiles + 1;
 			}
 		pthread_mutex_unlock(&protector->resolverLock);
+		free(domain);
 	}
-
-	// ****** Free space alloced by strncpy in request ****
-	free(domain);
-	domain = NULL;
-	address = NULL;
 
 	// print thread id resolved
 	pthread_t tid = pthread_self();
 	pthread_mutex_lock(&protector->outputLock);
 		fprintf(stdout, "Thread # %lu resolved %d hosts\n", tid, numOfFiles);
 	pthread_mutex_unlock(&protector->outputLock);
+
+	// ****** Free space alloced by strncpy in request ****
+	free(address);
+	domain = NULL;
+	address = NULL;
+
 
 	return NULL;
 
