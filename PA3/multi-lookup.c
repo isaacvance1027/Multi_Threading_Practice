@@ -127,6 +127,7 @@ struct Protector* protectorConstructor(char** argv, int argc, int requesters){
 	p->files = argc;
 	p->threads = requesters;
 	pthread_mutex_init(&p->stackLock, NULL);
+	pthread_mutex_init(&p->threadLock, NULL);
 	pthread_mutex_init(&p->requesterLock, NULL);
 	pthread_mutex_init(&p->requesterLogLock, NULL);
 	pthread_mutex_init(&p->errLock, NULL);
@@ -200,6 +201,10 @@ void* request(void* arg){
 		// check for file validity
 		if (inputFile != NULL){
 			while(fgets(name, MAX_NAME_LENGTH, inputFile) != NULL){
+
+				// strncpy() auto mallocs, remember the TODO in resolve to free the
+				// space that has been malloced.... resolve needs to be able to access
+				// domain memory space because threads share heap
 				strncpy(domain, name, MAX_NAME_LENGTH);
 				domainSize = strlen(domain);
 				if (domain[domainSize - 1] == '\n'){
@@ -222,7 +227,7 @@ void* request(void* arg){
 				else {
 					// error message for out of bounds files
 					pthread_mutex_lock(&protector->errLock);
-						fprintf(stderr, "Host: %s out of bounds, file not logged.\n", domain);
+						fprintf(stderr, "Host: %s out of bounds.\n", domain);
 					pthread_mutex_unlock(&protector->errLock);
 				}
 				numOfFiles = numOfFiles + 1;
@@ -244,14 +249,49 @@ void* request(void* arg){
 	pthread_mutex_unlock(&protector->outputLock);
 
 	// Update the thread count after requester thread has finished a request
-	pthread_mutex_lock(&protector->stackLock);
+	pthread_mutex_lock(&protector->threadLock);
 		protector->threads = protector->threads - 1;
-	pthread_mutex_unlock(&protector->stackLock);
+	pthread_mutex_unlock(&protector->threadLock);
 
 	return NULL;
 }
 
 
-void* resolve(void* threadArg){
+void* resolve(void* arg){
 	// TODO:: FREE DOMAIN ALLOCATED BY STRNCPY
+
+	// parse through threadArg struct as in request()
+	// and Instantiate necessary variables on threads stack
+	FILE* resolverLog = ((struct ThreadArg *)arg)->resolveLog;
+	char* address = NULL;
+	char* domain = NULL;
+	int numOfFiles = 0;
+	int success = -1;
+	int checkThreads = 0;
+
+	struct Protector* protector = ((struct ThreadArg *)arg)->p;
+
+	// allocate memory for address pointer to account for maximum possible size
+	address = (char*)malloc(sizeof(char)*MAX_IP_LENGTH);
+
+	// begin synchronization of resolver threads in resolver pool
+	while(1){
+		// need to block access to threadcount to check boundary condition
+		pthread_mutex_lock(&protector->threadLock);
+			checkThreads = protector->threads;
+		pthread_mutex_unlock(&protector->threadLock);
+
+		// need to block access to stack head to see if stack is empty
+		pthread_mutex_lock(&protector->stackLock);
+			if ((protector->stack->head == -1) && (checkThreads == 0)){
+				pthread_mutex_unlock(&protector->stackLock);
+				break;
+			}
+			else{
+				pthread_mutex_unlock(&protector->stackLock);
+			}
+
+
+	}
+
 }

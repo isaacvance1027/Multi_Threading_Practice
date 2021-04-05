@@ -16,6 +16,7 @@ struct Protector{
 	int whichFile;
 	int files;
 	pthread_mutex_t stackLock;
+	pthread_mutex_t threadLock;
 	pthread_mutex_t requesterLock;
 	pthread_mutex_t requesterLogLock;
 	pthread_mutex_t errLock;
