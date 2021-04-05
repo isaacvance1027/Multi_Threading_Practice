@@ -83,14 +83,23 @@ int main(int argc, char* argv[]){
 /*******************************************************************************
 														BEGIN THREAD POOLS
 *******************************************************************************/
-/*	for (int i = 0; i < requesters; i++) {
-	  if (pthread_create(&reqThreads[i], NULL, &requester, (void *) tArgs) != 0)
+	// First check that thread creation of requester and resolvers pools is
+	// successfull
+	for (int i = 0; i < requesters; i++){
+	  if (pthread_create(&reqThreads[i], NULL, &request, (void *) threadArg) != 0)
 		{
 	      perror("Requester thread pool failed.\n");
 	      exit(EXIT_FAILURE);
 	  }
 	}
-*/
+	for (int i = 0; i < resolvers; i++){
+		if (pthread_create(&resThreads[i], NULL, &resolve, (void *) threadArg) != 0)
+		{
+	      perror("Requester thread pool failed.\n");
+	      exit(EXIT_FAILURE);
+	  }
+	}
+
 /*******************************************************************************
 												FREE MEMORY AND END PROGRAM
 *******************************************************************************/
