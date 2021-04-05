@@ -55,6 +55,16 @@ int main(int argc, char* argv[]){
 		exit(EXIT_FAILURE);
 	}
 
+
+/*******************************************************************************
+													OPEN LOG FILES FOR WRITING
+*******************************************************************************/
+	FILE* requesterLog = NULL;
+	FILE* resolverLog = NULL;
+	requesterLog = openWrite(requesterLog, argv[3]);
+	resolverLog = openWrite(resolverLog, argv[4]);
+
+
 /*******************************************************************************
 														DATA STRUCTURE UPDATE
 *******************************************************************************/
@@ -66,18 +76,29 @@ int main(int argc, char* argv[]){
 	pthread_t reqThreads[requesters];
 	pthread_t resThreads[resolvers];
 
+	struct ThreadArg* threadArg = malloc(sizeof(struct ThreadArg));
+	threadArg->requestLog = requesterLog;
+	threadArg->resolveLog = resolverLog;
+
 /*******************************************************************************
-													OPEN LOG FILES FOR WRITING
+														BEGIN THREAD POOLS
 *******************************************************************************/
-	FILE* requesterLog = NULL;
-	FILE* resolverLog = NULL;
-	requesterLog = openWrite(requesterLog, argv[3]);
-	resolverLog = openWrite(resolverLog, argv[4]);
-
-
-
+/*	for (int i = 0; i < requesters; i++) {
+	  if (pthread_create(&reqThreads[i], NULL, &requester, (void *) tArgs) != 0)
+		{
+	      perror("Requester thread pool failed.\n");
+	      exit(EXIT_FAILURE);
+	  }
+	}
+*/
+/*******************************************************************************
+												FREE MEMORY AND END PROGRAM
+*******************************************************************************/
 	//free the mutex protector struct
 	protectorDestructor(protector);
+
+	//free the thread argument struct
+	free(threadArg);
 
 	// Stop timer and output elapsed time
 	gettimeofday(&stop, NULL);
@@ -111,6 +132,8 @@ struct Protector* protectorConstructor(char** argv, int argc, int requesters){
 	pthread_mutex_init(&p->errLock, NULL);
 	pthread_mutex_init(&p->outputLock, NULL);
 	pthread_mutex_init(&p->filesLock, NULL);
+	sem_init(&p->emptyStack, 0, ARRAY_SIZE);
+	sem_init(&p->fullStack, 0, 0);
 	return p;
 
 }
@@ -123,10 +146,104 @@ void protectorDestructor(struct Protector* p){
 	pthread_mutex_destroy(&p->errLock);
 	pthread_mutex_destroy(&p->outputLock);
 	pthread_mutex_destroy(&p->filesLock);
+	sem_destroy(&p->emptyStack);
+	sem_destroy(&p->fullStack);
 	free(p);
 }
-/*
-void* request(FILE* rqLog, FILE* rsLos, Protector* p){
 
+
+
+/*******************************************************************************
+										REQUESTER AND RESOLVER DEFINTIONS
+*******************************************************************************/
+
+void* request(void* arg){
+
+	// parse void argument struct
+	FILE* requesterLog = ((struct ThreadArg *)arg)->requestLog;
+	FILE* inputFile = NULL;
+	char* fileName = NULL;
+	char* domain = NULL;
+	int domainSize = 0;
+	int numOfFiles = 0;
+	int whichFile = 0;
+
+	struct Protector* protector = ((struct ThreadArg *)arg)->p;
+
+	// initialize memory to store domain name within
+	char name[MAX_NAME_LENGTH];
+
+	// synchronize access to the Protector
+	while(1){
+		// lock access to protector for determining which file
+		pthread_mutex_lock(&protector->filesLock);
+			if (protector->whichFile < protector->files){
+				whichFile = protector->whichFile;
+				protector->whichFile = protector->whichFile + 1;
+			}else{
+				whichFile = 0;
+			}
+		pthread_mutex_unlock(&protector->filesLock);
+
+		// if the if else indicates that we are at the end of the files,
+		// break to the end of the request
+		if (whichFile == 0){
+			break;
+		}
+
+		// we know which file to get from the shared buffer now, so we open in in
+		// read mode using function from file.h
+		fileName = protector->arguments[whichFile];
+		inputFile = openRead(inputFile, fileName);
+
+		// check for file validity
+		if (inputFile != NULL){
+			while(fgets(name, MAX_NAME_LENGTH, inputFile) != NULL){
+				strncpy(domain, name, MAX_NAME_LENGTH);
+				domainSize = strlen(domain);
+				if (domain[domainSize - 1] == '\n'){
+					//lock mutex for writing to request log
+					pthread_mutex_lock(&protector->requesterLogLock);
+						fprintf(requesterLog, "%s", domain);
+					pthread_mutex_unlock(&protector->requesterLogLock);
+					domain[domainSize - 1] = '\0';
+					sem_wait(&protector->emptyStack);
+						pthread_mutex_lock(&protector->stackLock);
+							protector->stack->head++;
+							protector->stack->size++;
+							protector->stack->buff[protector->stack->head] = domain;
+						pthread_mutex_unlock(&protector->stackLock);
+					sem_post(&protector->fullStack);
+				}
+				else {
+					pthread_mutex_lock(&protector->errLock);
+						fprintf(stderr, "Host: %s out of bounds, file not logged.\n", domain);
+					pthread_mutex_unlock(&protector->errLock);
+				}
+				numOfFiles = numOfFiles + 1;
+			}
+		}
+		else{
+			pthread_mutex_lock(&protector->errLock);
+				fprintf(stderr, "File: %s invalid\n", fileName);
+			pthread_mutex_unlock(&protector->errLock);
+		}
+		fclose(inputFile);
+	}
+	pthread_t tid = pthread_self();
+	pthread_mutex_lock(&protector->outputLock);
+		fprintf(stdout, "Thread # %lu serviced %d files\n", tid, numOfFiles);
+	pthread_mutex_unlock(&protector->outputLock);
+
+	pthread_mutex_lock(&protector->stackLock);
+		protector->threads = protector->threads - 1;
+	pthread_mutex_unlock(&protector->stackLock);
+
+	return NULL;
+}
+
+/*
+void* resolve(void* threadArg){
+	// TODO:: FREE DOMAIN ALLOCATED BY STRNCPY
 }
 */
