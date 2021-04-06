@@ -241,6 +241,7 @@ void* request(void* arg){
 				domain = (char *) malloc(sizeof(char *) * MAX_NAME_LENGTH);
         memcpy(domain, name, MAX_NAME_LENGTH);
 				domainSize = strlen(domain);
+
 				if (domain[domainSize - 1] == '\n'){
 					// lock mutex for writing to request log
 					pthread_mutex_lock(&protector->requesterLock);
@@ -252,8 +253,8 @@ void* request(void* arg){
 					// TODO:: get rid of unnecessary functions from old iterations
 					sem_wait(&protector->emptyStack);
 						pthread_mutex_lock(&protector->stackLock);
-							protector->stack->head++;
-							protector->stack->size++;
+							protector->stack->head += 1;
+							protector->stack->size += 1;
 							protector->stack->buff[protector->stack->head] = domain;
 						pthread_mutex_unlock(&protector->stackLock);
 					sem_post(&protector->fillStack);
@@ -266,14 +267,16 @@ void* request(void* arg){
 				}
 			}
 			numOfFiles = numOfFiles + 1;
+			fclose(inputFile);
 		}
 		else{
 			// Display error message if thread is unable to access file
 			pthread_mutex_lock(&protector->errLock);
 				fprintf(stderr, "File: %s invalid\n", fileName);
 			pthread_mutex_unlock(&protector->errLock);
+			break;
 		}
-		fclose(inputFile);
+
 	}
 
 	// output success message to display number of services performed by thread
